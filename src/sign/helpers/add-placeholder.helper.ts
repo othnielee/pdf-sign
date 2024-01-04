@@ -29,7 +29,8 @@ export async function addPlaceholder(pdfBuffer: Buffer, signatureOptions: Signat
   const signatureReason = signatureOptions.reason || DEFAULT_SIGNATURE_REASON;
   const widgetName = `Signature_${signatureDate.getTime()}`;
 
-  // Get parameters to position the signature --
+  /// Get parameters to position the signature
+
   // `isVisibleSignature` determines whether the signature will be visible on the page.
   // This is determined by the signature size and position within page boundaries.
 
@@ -44,7 +45,8 @@ export async function addPlaceholder(pdfBuffer: Buffer, signatureOptions: Signat
     signatureOptions.height,
   );
 
-  // Setup the signature appearance --
+  /// Setup the signature appearance
+
   // There will be an appearance if the signature is visible. Otherwise,
   // the document will be signed and have an interactive signature panel,
   // but signature information will not be visible as part of page content.
@@ -70,7 +72,8 @@ export async function addPlaceholder(pdfBuffer: Buffer, signatureOptions: Signat
       Font: { [fontName]: fontDict },
     });
 
-    // Setup the appearance content --
+    /// Setup the appearance content stream
+
     // Text is drawn left to right, top to bottom in the appearance rectangle.
     // So we start at the top and decrement the vertical position for each line.
     // Horizontal and vertical padding is built in to each line's base position.
@@ -99,7 +102,8 @@ export async function addPlaceholder(pdfBuffer: Buffer, signatureOptions: Signat
     appearanceStreamRef = pdfDoc.context.register(appearanceStream);
   }
 
-  // Setup the signature dictionary --
+  /// Setup the signature dictionary
+
   // Since this is a placeholder, the contents property is filled with zeros.
   // The signing code will replace it with the actual signature data.
 
@@ -122,7 +126,8 @@ export async function addPlaceholder(pdfBuffer: Buffer, signatureOptions: Signat
 
   const signatureDictRef = pdfDoc.context.register(signatureDict);
 
-  // Setup the signature widget annotation dictionary --
+  /// Setup the signature widget annotation dictionary
+
   // We include the appearance stream if the signature is visible.
 
   const widgetDict = pdfDoc.context.obj({
@@ -139,13 +144,12 @@ export async function addPlaceholder(pdfBuffer: Buffer, signatureOptions: Signat
 
   const widgetDictRef = pdfDoc.context.register(widgetDict);
 
-  // Add the signature widget to the document catalog --
-  // First, we check whether the document already has an AcroForm
-  // dictionary with a usable fields array. If not, create the
-  // objects to ensure they are available in the document catalog.
-  // Then we add the widget annotation to AcroForm's Fields array.
+  /// Add the signature widget to the document catalog
 
-  let acroForm = pdfDoc.catalog.get(PDFName.of('AcroForm')) as PDFDict;
+  // Check whether the document already has an 'AcroForm'
+  // dictionary. If not, create it with the minimum required keys.
+
+  let acroForm = pdfDoc.catalog.lookupMaybe(PDFName.of('AcroForm'), PDFDict);
 
   if (!acroForm) {
     acroForm = pdfDoc.context.obj({
@@ -154,26 +158,35 @@ export async function addPlaceholder(pdfBuffer: Buffer, signatureOptions: Signat
     });
 
     pdfDoc.catalog.set(PDFName.of('AcroForm'), acroForm);
-
-  } else if (!acroForm.has(PDFName.of('Fields'))) {
-    acroForm.set(PDFName.of('Fields'), pdfDoc.context.obj([]));
   }
 
-  const formFields = acroForm.lookup(PDFName.of('Fields'), PDFArray);
+  // Try to get a valid 'Fields' array. Create if one does not exist.
 
+  let formFields = acroForm.lookupMaybe(PDFName.of('Fields'), PDFArray);
+
+  if (!formFields) {
+    formFields = pdfDoc.context.obj([]);
+    acroForm.set(PDFName.of('Fields'), formFields);
+  }
+
+  // Add the widget annotation to AcroForm's 'Fields' array.
   formFields.push(widgetDictRef);
 
-  // Add the signature widget to the page annotations array --
-  // Create the Annots array if it doesn't exist.
+  /// Add the signature widget to the page annotations array
 
-  let annotsArray = page.node.get(PDFName.of('Annots')) as PDFArray;
+  // Try to get a valid 'Annots' array. Create if one does not exist.
+
+  let annotsArray = page.node.lookupMaybe(PDFName.of('Annots'), PDFArray);
 
   if (!annotsArray) {
     annotsArray = pdfDoc.context.obj([]);
     page.node.set(PDFName.of('Annots'), annotsArray);
   }
 
+  // Add the widget annotation to the page's 'Annots' array.
   annotsArray.push(widgetDictRef);
+
+  /// Finalize and return
 
   // If the signature is visible, tell PDF readers to generate the appearance stream
   if (isVisibleSignature) {
